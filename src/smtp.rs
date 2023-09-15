@@ -188,12 +188,14 @@ impl Server {
         }
         match self.state_machine.state {
             State::Received(mail) => {
-                unimplemented!()
+                tracing::info!("Sending mail");
+                tracing::info!("{mail:?}")
                 // self.db.lock().await.replicate(mail).await?;
             }
             State::ReceivingData(mail) => {
                 tracing::info!("Received EOF before receiving QUIT");
-                unimplemented!()
+                tracing::info!("Sending mail EOF");
+                tracing::info!("{mail:?}")
                 // self.db.lock().await.replicate(mail).await?;
             }
             _ => {}
