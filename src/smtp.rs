@@ -290,7 +290,19 @@ impl Server {
                     let Ok(json) = json else{
                         break 'rec;
                     };
-                    
+                    let client = reqwest::Client::new();
+                    let resp = client.post("https://worker-email-production.deepgauravraj.workers.dev/api/email")
+                        .header("Content-Type", "application/json")
+                        .header("Authorization", std::env::var("EMAIL_TOKEN").unwrap_or_default())
+                        .body(json)
+                        .send().await;
+                    match resp {
+                        Ok(resp) => {
+                            let resp =  resp.text().await.unwrap_or_default();
+                            tracing::debug!("RECEIVED SEND Response {resp}")
+                        },
+                        Err(err) => tracing::warn!("SEND ERROR {err:?}"),
+                    }
                 } else {
                     tracing::warn!("Cant parse message, discarding")
                 }
