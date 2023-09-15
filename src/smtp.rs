@@ -291,6 +291,7 @@ impl Server {
                         break 'rec;
                     };
                     let client = reqwest::Client::new();
+                    tracing::trace!("Sending json {json:?}");
                     let resp = client.post("https://worker-email-production.deepgauravraj.workers.dev/api/email")
                         .header("Content-Type", "application/json")
                         .header("Authorization", std::env::var("EMAIL_TOKEN").unwrap_or_default())
