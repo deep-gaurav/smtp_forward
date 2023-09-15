@@ -52,7 +52,7 @@ impl StateMachine {
         tracing::trace!("Received {raw_msg} in state {:?}", self.state);
         let mut msg = raw_msg.split_whitespace();
         let command = msg.next().context("received empty command")?.to_lowercase();
-        let state = std::mem::replace(&mut self.state, State::Fresh);
+        let state = self.state.clone();
         match (command.as_str(), state) {
             ("ehlo", State::Fresh) => {
                 tracing::trace!("Sending AUTH info");
@@ -131,10 +131,13 @@ impl StateMachine {
                 self.state = State::ReceivingData(mail);
                 Ok(resp)
             }
-            _ => anyhow::bail!(
-                "Unexpected message received in state {:?}: {raw_msg}",
-                self.state
-            ),
+            (msg, state) => {
+                tracing::trace!("Bailing out: Unexpected message received in state {state:?}: {msg}");
+                anyhow::bail!(
+                    "Unexpected message received in state {:?}: {raw_msg}",
+                    self.state
+                )
+            },
         }
     }
 
@@ -187,6 +190,7 @@ impl Server {
                 break;
             }
         }
+        tracing::trace!("State machine exited {:?}",self.state_machine.state);
         match self.state_machine.state {
             State::Received(mail) => {
                 tracing::info!("Sending mail");
