@@ -273,7 +273,9 @@ impl Server {
                                     }
                                 )
                             }
-                        ).collect::<Vec<_>>()
+                        )
+                        .filter(|f|f.value.is_some())
+                        .collect::<Vec<_>>()
                     ;
 
                     let message = Message{
