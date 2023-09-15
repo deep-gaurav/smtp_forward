@@ -1,7 +1,10 @@
 use anyhow::{Context, Result};
+use mail_parser::{MessageParser, MimeHeaders};
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::Mutex;
+
+use crate::schema::{Contact, Content, Message};
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Mail {
@@ -132,12 +135,14 @@ impl StateMachine {
                 Ok(resp)
             }
             (msg, state) => {
-                tracing::trace!("Bailing out: Unexpected message received in state {state:?}: {msg}");
+                tracing::trace!(
+                    "Bailing out: Unexpected message received in state {state:?}: {msg}"
+                );
                 anyhow::bail!(
                     "Unexpected message received in state {:?}: {raw_msg}",
                     self.state
                 )
-            },
+            }
         }
     }
 
@@ -190,17 +195,111 @@ impl Server {
                 break;
             }
         }
-        tracing::trace!("State machine exited {:?}",self.state_machine.state);
+        tracing::trace!("State machine exited {:?}", self.state_machine.state);
         match self.state_machine.state {
-            State::Received(mail) => {
+            State::Received(mail) => 'rec: {
                 tracing::info!("Sending mail");
-                tracing::info!("{mail:?}")
+                tracing::info!("{mail:?}");
+                let data = MessageParser::default().parse(&mail.data);
+                if let Some(data) = data {
+                    let Some(from) = data.from() else {
+                        break 'rec;
+                    };
+                    let from = from.clone().into_list();
+                    if from.len() != 1 {
+                        tracing::warn!("From length not supported");
+                        break 'rec;
+                    }
+                    let from = from.first().unwrap();
+                    let Some(email) = &from.address else {
+                        tracing::warn!("From ??");
+                        break 'rec;
+                    };
+                    let from = Contact {
+                        email: Some(email.to_string()),
+                        name: from.name().map(|e| e.to_string()),
+                    };
+                    let to = data
+                        .to()
+                        .map(|to| to.clone().into_list())
+                        .unwrap_or_default()
+                        .into_iter()
+                        .map(|address| Contact {
+                            email: address.address.map(|e| e.to_string()),
+                            name: address.name.map(|e| e.to_string()),
+                        })
+                        .collect::<Vec<_>>();
+                    let cc = data
+                        .cc()
+                        .map(|to| to.clone().into_list())
+                        .unwrap_or_default()
+                        .into_iter()
+                        .map(|address| Contact {
+                            email: address.address.map(|e| e.to_string()),
+                            name: address.name.map(|e| e.to_string()),
+                        })
+                        .collect::<Vec<_>>();
+                    let bcc = data
+                        .bcc()
+                        .map(|to| to.clone().into_list())
+                        .unwrap_or_default()
+                        .into_iter()
+                        .map(|address| Contact {
+                            email: address.address.map(|e| e.to_string()),
+                            name: address.name.map(|e| e.to_string()),
+                        })
+                        .collect::<Vec<_>>();
+                    let reply_to = data
+                        .reply_to()
+                        .map(|to| to.clone().into_list())
+                        .unwrap_or_default()
+                        .into_iter()
+                        .map(|address| Contact {
+                            email: address.address.map(|e| e.to_string()),
+                            name: address.name.map(|e| e.to_string()),
+                        })
+                        .collect::<Vec<_>>();
+                    let subject = data.subject().map(|e|e.to_string());
+
+                    let content = data.parts.into_iter()
+                        .map(
+                            |part|Content{
+                                value:part.text_contents().map(|e|e.to_string()),
+                                mime:part.content_type().map(|e|
+                                    if let Some(subtyp) = &e.c_subtype{
+                                        format!("{}/{}",e.c_type,subtyp)
+                                    }else{
+                                        format!("{}",e.c_type)
+                                    }
+                                )
+                            }
+                        ).collect::<Vec<_>>()
+                    ;
+
+                    let message = Message{
+                        from,
+                        to,
+                        reply_to,
+                        cc,
+                        bcc,
+                        subject,
+                        content
+                    };
+                    tracing::trace!("Sending {message:?}");
+                    let json = serde_json::to_string(&message);
+                    let Ok(json) = json else{
+                        break 'rec;
+                    };
+                    
+                } else {
+                    tracing::warn!("Cant parse message, discarding")
+                }
                 // self.db.lock().await.replicate(mail).await?;
             }
             State::ReceivingData(mail) => {
                 tracing::info!("Received EOF before receiving QUIT");
-                tracing::info!("Sending mail EOF");
-                tracing::info!("{mail:?}")
+                tracing::info!("Discarding mail EOF");
+                tracing::info!("{mail:?}");
                 // self.db.lock().await.replicate(mail).await?;
             }
             _ => {}
