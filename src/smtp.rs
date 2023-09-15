@@ -38,6 +38,7 @@ impl StateMachine {
     const HOLD_YOUR_HORSES: &[u8] = &[];
 
     pub fn new(domain: impl AsRef<str>) -> Self {
+        tracing::trace!("New state machine initialized");
         let domain = domain.as_ref();
         let ehlo_greeting = format!("250-{domain} Hello {domain}\n250 AUTH PLAIN LOGIN\n");
         Self {
