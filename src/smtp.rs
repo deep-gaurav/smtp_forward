@@ -4,7 +4,7 @@ use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::Mutex;
 
-use crate::schema::{Contact, Content, Message};
+use crate::schema::{Attachments, Contact, Content, Message};
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Mail {
@@ -259,51 +259,63 @@ impl Server {
                             name: address.name.map(|e| e.to_string()),
                         })
                         .collect::<Vec<_>>();
-                    let subject = data.subject().map(|e|e.to_string());
+                    let subject = data.subject().map(|e| e.to_string());
+                    let attachments = data
+                        .attachments()
+                        .into_iter()
+                        .map(|attachment| Attachments {
+                            filename: attachment.attachment_name().unwrap_or_default().to_string(),
+                            content: attachment.contents().to_vec(),
+                        })
+                        .collect();
+                    let content = data
+                        .parts
+                        .into_iter()
+                        .map(|part| Content {
+                            value: part.text_contents().map(|e| e.to_string()),
+                            mime: part.content_type().map(|e| {
+                                if let Some(subtyp) = &e.c_subtype {
+                                    format!("{}/{}", e.c_type, subtyp)
+                                } else {
+                                    format!("{}", e.c_type)
+                                }
+                            }),
+                        })
+                        .filter(|f| f.value.is_some())
+                        .collect::<Vec<_>>();
 
-                    let content = data.parts.into_iter()
-                        .map(
-                            |part|Content{
-                                value:part.text_contents().map(|e|e.to_string()),
-                                mime:part.content_type().map(|e|
-                                    if let Some(subtyp) = &e.c_subtype{
-                                        format!("{}/{}",e.c_type,subtyp)
-                                    }else{
-                                        format!("{}",e.c_type)
-                                    }
-                                )
-                            }
-                        )
-                        .filter(|f|f.value.is_some())
-                        .collect::<Vec<_>>()
-                    ;
-
-                    let message = Message{
+                    let message = Message {
                         from,
                         to,
                         reply_to,
                         cc,
                         bcc,
                         subject,
-                        content
+                        content,
+                        attachments,
                     };
                     tracing::trace!("Sending {message:?}");
                     let json = serde_json::to_string(&message);
-                    let Ok(json) = json else{
+                    let Ok(json) = json else {
                         break 'rec;
                     };
                     let client = reqwest::Client::new();
                     tracing::trace!("Sending json {json:?}");
-                    let resp = client.post("https://worker-email-production.deepgauravraj.workers.dev/api/email")
+                    let resp = client
+                        .post("https://worker-email-production.deepgauravraj.workers.dev/api/email")
                         .header("Content-Type", "application/json")
-                        .header("Authorization", std::env::var("EMAIL_TOKEN").unwrap_or_default())
+                        .header(
+                            "Authorization",
+                            std::env::var("EMAIL_TOKEN").unwrap_or_default(),
+                        )
                         .body(json)
-                        .send().await;
+                        .send()
+                        .await;
                     match resp {
                         Ok(resp) => {
-                            let resp =  resp.text().await.unwrap_or_default();
+                            let resp = resp.text().await.unwrap_or_default();
                             tracing::debug!("RECEIVED SEND Response {resp}")
-                        },
+                        }
                         Err(err) => tracing::warn!("SEND ERROR {err:?}"),
                     }
                 } else {

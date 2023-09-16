@@ -11,12 +11,12 @@ use smtp_forward::smtp;
 async fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
 
-    let addr =  format!(
+    let addr = format!(
         "0.0.0.0:{}",
-        std::env::var("PORT").unwrap_or_else(|_|"25".into())
+        std::env::var("PORT").unwrap_or_else(|_| "25".into())
     );
 
-    let domain = &std::env::var("DOMAIN").unwrap_or_else(|_|"smtp.deepwith.in".into());
+    let domain = &std::env::var("DOMAIN").unwrap_or_else(|_| "smtp.deepwith.in".into());
 
     tracing::info!("edgemail server for {domain} started");
 

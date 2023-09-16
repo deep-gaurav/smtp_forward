@@ -1,2 +1,2 @@
-pub mod smtp;
 pub mod schema;
+pub mod smtp;
